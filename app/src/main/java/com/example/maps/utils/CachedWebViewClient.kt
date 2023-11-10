@@ -17,7 +17,7 @@ import java.util.concurrent.Executors
 class CachedWebViewClient: WebViewClient() {
 
 
-    private val networkIOExecutor = Executors.newFixedThreadPool(10)
+    private val networkIOExecutor = Executors.newFixedThreadPool(5)
 
     override fun shouldInterceptRequest(
         view: WebView?,
@@ -25,13 +25,32 @@ class CachedWebViewClient: WebViewClient() {
     ): WebResourceResponse? {
         Log.d(Utility.TAG,"Making Request: ${request?.url}")
         val url = request?.url.toString()
-        val ext = ".png"
-        val cacheFile = File(view?.context?.cacheDir,url.hashCode().toString()+ext)
+        val ext = ".cf" //cache file
+        val hashCode =  url.hashCode().toString()
+        val cacheFile = File(view?.context?.cacheDir,hashCode+ext)
         var response: WebResourceResponse? = null
 
-
+        request?.requestHeaders?.set("Access-Control-Allow-Origin","*")
         Log.d(Utility.TAG,"Cache File path: ${cacheFile.absolutePath} : ${request?.requestHeaders?.get("Content-Type")}")
+        /*    if (url == "https://maps.googleapis.com/maps-api-v3/api/js/53/14/marker.js") {
+                Log.d(Utility.TAG,"Read marker")
+                return WebResourceResponse("text/javascript","UTF-8",context.assets.open("marker.js"))
+            }
+        if (url == "https://maps.googleapis.com/maps-api-v3/api/js/53/14/util.js") {
+            Log.d(Utility.TAG,"Read marker")
+            return WebResourceResponse("text/javascript","UTF-8",context.assets.open("util.js"))
+        }
+        if (url=="https://maps.googleapis.com/maps-api-v3/api/js/53/14/controls.js") {
+            return WebResourceResponse("text/javascript","UTF-8",context.assets.open("controls.js"))
+        }
+        if (url == "https://fonts.gstatic.com/s/roboto/v30/KFOmCnqEu92Fr1Mu4mxPKTU1Kg.ttf") {
+            return WebResourceResponse("font/ttf","UTF-8",context.assets.open("KFOmCnqEu92Fr1Mu4mxPKTU1Kg.ttf"))
+        }
 
+        if (url.contains("QuotaService")) {
+            Log.d("TG","LLS")
+        }*/
+        //if (!url.contains("/maps/vt")) return response
             response = if (cacheFile.exists()) {
                 Log.d(Utility.TAG,"Cache exists")
                 readFromCache(url, cacheFile)
@@ -42,13 +61,6 @@ class CachedWebViewClient: WebViewClient() {
         return response
     }
 
-    override fun onLoadResource(view: WebView?, url: String?) {
-        super.onLoadResource(view, url)
-    }
-
-    override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
-        return super.shouldOverrideUrlLoading(view, request)
-    }
 
     private fun readFromCache(url: String?,cache: File): WebResourceResponse? {
         val cachedWRR = Utility.convertToCachedWebResourceResponse(cache)
