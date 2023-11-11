@@ -11,13 +11,64 @@
 </head>
 <body>
 
+<!--
+
+//partial logic for using the latest version of JS (initially)
+const originalOpen = XMLHttpRequest.prototype.open;
+XMLHttpRequest.prototype.open = function(method, url, async, user, password) {
+this._method = method;
+this._url = url;
+if (method=="POST" && url.includes("google.internal.maps.mapsjs.v1.MapsJsInternalService")) {
+this.sendToAndroid=true;
+} else this.sendToAndroid=false;
+originalOpen.apply(this, arguments);
+};
+
+const originalSend = XMLHttpRequest.prototype.send;
+XMLHttpRequest.prototype.send = function(data) {
+
+this.addEventListener('load', function() {
+if (this.sendToAndroid) {
+console.log("RESP"+this.responseText);
+Android.processPostData(this._data,this.responseText);
+}
+});
+if (this._method && this._method.toUpperCase() === 'POST' && data) {
+if (typeof data === 'string') {
+try {
+const parsedData = JSON.parse(data);
+this._data=data;
+console.log('Parsed Body:', parsedData);
+} catch (error) {
+console.error('Error parsing JSON body:', error);
+}
+}
+}
+originalSend.apply(this, arguments);
+};
+
+
+const originalSend = XMLHttpRequest.prototype.onreadystatechange;
+XMLHttpRequest.prototype.onreadystatechange = function(data) {
+if(this.status==200 && (typeof this.responseText == typeof "") && this.responseText.startsWith("data:")) {
+var resp = this.responseText.substring(5);
+var decoder = TextDecoder().decode(resp);
+console.log(decoder);
+}
+originalSend.apply(this,arguments);
+
+
+}
+-->
+
+
 <div id="map"></div>
 
 <script>
 
       // Initialize and load the map
       // API KEY is empty , Development will always be shown with a popup
-        const apiKey = '';
+        const apiKey = '***REMOVED***';//***REMOVED***';
       function initMap() {
 
         const map = new google.maps.Map(document.getElementById('map'), {
@@ -28,7 +79,7 @@
       }
 </script>
 
-<script src="https://maps.googleapis.com/maps/api/js?v=3.53&key=&callback=initMap" async defer></script>
+<script src="https://maps.googleapis.com/maps/api/js?v=3.53&key=***REMOVED***&callback=initMap" async defer></script>
 
 </body>
 
