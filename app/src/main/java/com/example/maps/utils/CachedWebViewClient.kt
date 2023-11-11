@@ -9,12 +9,13 @@ import android.webkit.WebViewClient
 import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
-import java.io.ObjectOutputStream
 import java.io.OutputStream
 import java.net.URL
+import java.util.LinkedList
+import java.util.Queue
 import java.util.concurrent.Executors
 
-class CachedWebViewClient: WebViewClient() {
+class CachedWebViewClient(val webView: WebView): WebViewClient() {
 
 
     private val networkIOExecutor = Executors.newFixedThreadPool(5)
@@ -23,11 +24,16 @@ class CachedWebViewClient: WebViewClient() {
         view: WebView?,
         request: WebResourceRequest?
     ): WebResourceResponse? {
+
+       return processReq(request)
+    }
+
+    private fun processReq(request: WebResourceRequest?) : WebResourceResponse? {
         Log.d(Utility.TAG,"Making Request: ${request?.url}")
         val url = request?.url.toString()
         val ext = ".cf" //cache file
         val hashCode =  url.hashCode().toString()
-        val cacheFile = File(view?.context?.cacheDir,hashCode+ext)
+        val cacheFile = File(webView.context?.cacheDir,hashCode+ext)
         var response: WebResourceResponse? = null
 
         request?.requestHeaders?.set("Access-Control-Allow-Origin","*")
@@ -51,39 +57,48 @@ class CachedWebViewClient: WebViewClient() {
             Log.d("TG","LLS")
         }*/
         //if (!url.contains("/maps/vt")) return response
-            response = if (cacheFile.exists()) {
-                Log.d(Utility.TAG,"Cache exists")
-                readFromCache(url, cacheFile)
-            } else {
-                readFromNetwork(url, cacheFile)
-            }
+        val z = WrappedWebResourceResponse("image/png","UTF-8",null)
+        response = if (cacheFile.exists()) {
+            Log.d(Utility.TAG,"Cache exists")
+            val z = WrappedWebResourceResponse("image/png","UTF-8",null)
+            readFromCache(url, cacheFile,z)
+            z
+        } else {
+            readFromNetwork(url, cacheFile,z)
+            z
+        }
 
         return response
     }
 
 
-    private fun readFromCache(url: String?,cache: File): WebResourceResponse? {
+    private fun readFromCache(url: String?,cache: File, z: WrappedWebResourceResponse): WebResourceResponse? {
         val cachedWRR = Utility.convertToCachedWebResourceResponse(cache)
         return if (cachedWRR!=null) {
-            val mime = cachedWRR.headers?.get("Content-Type") ?: "text/javascript"
-            //cachedWRR.headers?.put("Access-Control-Allow-Origin","*")
+            val mime = cachedWRR.headers?.get("Content-Type") ?: "image/png"//Prefs.getMimeMap(context,cache.name) ?: "image/png"
             Log.d(Utility.TAG,"Read From file CT: ${mime}")
-            WebResourceResponse(/*cachedWRR.headers?.get("Content-Type") ?: cachedWRR.mimeType,cachedWRR.encoding*/mime,"UTF-8",cachedWRR.data).apply {
-                //responseHeaders = (cachedWRR.headers ?: HashMap())
-            }
+            if (cachedWRR.headers?.get("Cache-Control")?.toInt()!!*1000 < (System.currentTimeMillis()-cache.lastModified())) {
+                cache.delete()
+                readFromNetwork(url,cache,z)
+            } else
+
+                z.modifyResource(mime,"UTF-8",cachedWRR.data)
+            z
         } else  {
             Log.d(Utility.TAG,"Read Network 2")
-            readFromNetwork(url, cache)
+            /*readFromNetwork(url, cache,z)
+            z*/
+            null
         }
     }
 
-    private fun readFromNetwork(url: String?, cache: File): WebResourceResponse? {
+    private fun readFromNetwork(url: String?, cache: File,z: WrappedWebResourceResponse){//: WebResourceResponse? {
         networkIOExecutor.execute {
             Log.d(Utility.TAG, "Read from network for : $url")
-            if (url?.equals("file:///android_asset/maps.html") == true) return@execute
+            if (url?.equals("file:///android_asset/maps.html") == true || url?.contains("data:")==true) return@execute
             var connectionInputStream: InputStream? = null
             var fileOutputStream: OutputStream? = null
-            var headerOutputStream: ObjectOutputStream? = null
+            var headerOutputStream: OutputStream? = null
             try {
                 val connection = URL(url).openConnection()
 
@@ -91,22 +106,29 @@ class CachedWebViewClient: WebViewClient() {
                 val headerMap = connection.headerFields
 
                 val headers = HashMap<String,String>()
+                var hStr = ""
                 /*for (i in headerMap.keys) {
                     var temp = ""
                     if (i!=null && headerMap[i]?.isNotEmpty() == true) {
                         for (j in headerMap[i]!!) {
                             temp+="$j,"
                         }
-                        if (url?.contains("google.internal.maps.mapsjs.v1.MapsJsInternalService/GetViewportInfo") == true)
+                        if (url?.contains("QuotaService") == true)
                             Log.d(Utility.TAG,"$i : $temp")
                         headers[i] = temp
                     }
                 }*/
-                headers.put("Content-Type",connection.contentType)
+                val contentTypeArr = connection.contentType.split(";")
+                hStr+=contentTypeArr[0]+";"+Utility.getMaxCacheAge(headerMap?.get("Cache-Control")?.get(0)).toString()
+                /*headers.set("Content-Type",connection.contentType);
+                headers.set("Cache-Control",
+                    Utility.getMaxCacheAge(headerMap?.get("Cache-Control")?.get(0)).toString()
+                )*/
+                //Prefs.setMimeMap(context,cache.name,connection.contentType ?: "")
                 if (!cache.exists()) cache.createNewFile()
                 connectionInputStream = connection.getInputStream()
                 fileOutputStream = FileOutputStream(cache)
-                headerOutputStream = ObjectOutputStream(FileOutputStream(cache.absolutePath+".hds"))
+                headerOutputStream = FileOutputStream(cache.absolutePath+".hds")
                 val buffer = ByteArray(1024)
                 connectionInputStream.buffered().use {
                     while (true) {
@@ -115,9 +137,11 @@ class CachedWebViewClient: WebViewClient() {
                         fileOutputStream.write(buffer,0,len)
                     }
                 }
-                headerOutputStream?.writeObject(headers)
+                headerOutputStream?.write(hStr.encodeToByteArray())
+                z.modifyResource(contentTypeArr[0],"UTF-8",connectionInputStream)
 
             } catch (e: Exception) {
+                Log.d(Utility.TAG,"Error Accessing $url")
                 e.printStackTrace()
             } finally {
                 connectionInputStream?.close()
@@ -125,8 +149,9 @@ class CachedWebViewClient: WebViewClient() {
                 headerOutputStream?.close()
 
             }
+
         }
-        return null
+       // return null
     }
 
     /*class WebInterface(val c: Context) {
