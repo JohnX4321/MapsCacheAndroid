@@ -19,7 +19,7 @@ The flow is as follows:
 
 ## Resources
 ### Video of Caching
-![]()
+![https://github.com/JohnX4321/MapsCacheAndroid/raw/main/readme_res/a.mp4](https://github.com/JohnX4321/MapsCacheAndroid/raw/main/readme_res/a.mp4)
 
 ### Video of Synchronous Loading
-![]()
+![https://github.com/JohnX4321/MapsCacheAndroid/raw/main/readme_res/b.webm](https://github.com/JohnX4321/MapsCacheAndroid/raw/main/readme_res/b.webm)
