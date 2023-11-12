@@ -17,7 +17,7 @@ import java.util.concurrent.Executors
 
 class CachedWebViewClient(val webView: WebView): WebViewClient() {
 
-
+    //required for parallel
     private val networkIOExecutor = Executors.newFixedThreadPool(5)
 
     override fun shouldInterceptRequest(
@@ -37,35 +37,15 @@ class CachedWebViewClient(val webView: WebView): WebViewClient() {
         var response: WebResourceResponse? = null
 
         request?.requestHeaders?.set("Access-Control-Allow-Origin","*")
-        Log.d(Utility.TAG,"Cache File path: ${cacheFile.absolutePath} : ${request?.requestHeaders?.get("Content-Type")}")
-        /*    if (url == "https://maps.googleapis.com/maps-api-v3/api/js/53/14/marker.js") {
-                Log.d(Utility.TAG,"Read marker")
-                return WebResourceResponse("text/javascript","UTF-8",context.assets.open("marker.js"))
-            }
-        if (url == "https://maps.googleapis.com/maps-api-v3/api/js/53/14/util.js") {
-            Log.d(Utility.TAG,"Read marker")
-            return WebResourceResponse("text/javascript","UTF-8",context.assets.open("util.js"))
-        }
-        if (url=="https://maps.googleapis.com/maps-api-v3/api/js/53/14/controls.js") {
-            return WebResourceResponse("text/javascript","UTF-8",context.assets.open("controls.js"))
-        }
-        if (url == "https://fonts.gstatic.com/s/roboto/v30/KFOmCnqEu92Fr1Mu4mxPKTU1Kg.ttf") {
-            return WebResourceResponse("font/ttf","UTF-8",context.assets.open("KFOmCnqEu92Fr1Mu4mxPKTU1Kg.ttf"))
-        }
-
-        if (url.contains("QuotaService")) {
-            Log.d("TG","LLS")
-        }*/
-        //if (!url.contains("/maps/vt")) return response
         val z = WrappedWebResourceResponse("image/png","UTF-8",null)
+        //changes for synchronous
+        if (url.contains("QuotaService") && !cacheFile.exists()) return WebResourceResponse("text/javascript","UTF-8",webView.context?.assets?.open("QuotaService.js"))
         response = if (cacheFile.exists()) {
             Log.d(Utility.TAG,"Cache exists")
-            val z = WrappedWebResourceResponse("image/png","UTF-8",null)
             readFromCache(url, cacheFile,z)
             z
         } else {
             readFromNetwork(url, cacheFile,z)
-            z
         }
 
         return response
@@ -75,27 +55,25 @@ class CachedWebViewClient(val webView: WebView): WebViewClient() {
     private fun readFromCache(url: String?,cache: File, z: WrappedWebResourceResponse): WebResourceResponse? {
         val cachedWRR = Utility.convertToCachedWebResourceResponse(cache)
         return if (cachedWRR!=null) {
-            val mime = cachedWRR.headers?.get("Content-Type") ?: "image/png"//Prefs.getMimeMap(context,cache.name) ?: "image/png"
-            Log.d(Utility.TAG,"Read From file CT: ${mime}")
+            val mime = cachedWRR.headers?.get("Content-Type") ?: "image/png"
             if (cachedWRR.headers?.get("Cache-Control")?.toInt()!!*1000 < (System.currentTimeMillis()-cache.lastModified())) {
                 cache.delete()
                 readFromNetwork(url,cache,z)
             } else
-
                 z.modifyResource(mime,"UTF-8",cachedWRR.data)
             z
         } else  {
             Log.d(Utility.TAG,"Read Network 2")
-            /*readFromNetwork(url, cache,z)
-            z*/
-            null
+            readFromNetwork(url, cache,z)
         }
     }
 
-    private fun readFromNetwork(url: String?, cache: File,z: WrappedWebResourceResponse){//: WebResourceResponse? {
-        networkIOExecutor.execute {
+    private fun readFromNetwork(url: String?, cache: File,z: WrappedWebResourceResponse): WebResourceResponse? {
+        //required for parallel
+       // networkIOExecutor.execute {
             Log.d(Utility.TAG, "Read from network for : $url")
-            if (url?.equals("file:///android_asset/maps.html") == true || url?.contains("data:")==true) return@execute
+            //Don't use cached asset file, load the original one directly.
+            if (url?.equals("file:///android_asset/maps.html") == true || url?.contains("data:")==true) return null//@execute
             var connectionInputStream: InputStream? = null
             var fileOutputStream: OutputStream? = null
             var headerOutputStream: OutputStream? = null
@@ -104,27 +82,11 @@ class CachedWebViewClient(val webView: WebView): WebViewClient() {
 
                 connection.connect()
                 val headerMap = connection.headerFields
-
-                val headers = HashMap<String,String>()
                 var hStr = ""
-                /*for (i in headerMap.keys) {
-                    var temp = ""
-                    if (i!=null && headerMap[i]?.isNotEmpty() == true) {
-                        for (j in headerMap[i]!!) {
-                            temp+="$j,"
-                        }
-                        if (url?.contains("QuotaService") == true)
-                            Log.d(Utility.TAG,"$i : $temp")
-                        headers[i] = temp
-                    }
-                }*/
+                //Headers required for Cache Expiry and MimeType
+                //Stored in a separate file with .hds extension
                 val contentTypeArr = connection.contentType.split(";")
                 hStr+=contentTypeArr[0]+";"+Utility.getMaxCacheAge(headerMap?.get("Cache-Control")?.get(0)).toString()
-                /*headers.set("Content-Type",connection.contentType);
-                headers.set("Cache-Control",
-                    Utility.getMaxCacheAge(headerMap?.get("Cache-Control")?.get(0)).toString()
-                )*/
-                //Prefs.setMimeMap(context,cache.name,connection.contentType ?: "")
                 if (!cache.exists()) cache.createNewFile()
                 connectionInputStream = connection.getInputStream()
                 fileOutputStream = FileOutputStream(cache)
@@ -138,7 +100,10 @@ class CachedWebViewClient(val webView: WebView): WebViewClient() {
                     }
                 }
                 headerOutputStream?.write(hStr.encodeToByteArray())
-                z.modifyResource(contentTypeArr[0],"UTF-8",connectionInputStream)
+                //changes for synchronous
+                z.modifyResource(contentTypeArr[0],"UTF-8",cache.inputStream())
+
+
 
             } catch (e: Exception) {
                 Log.d(Utility.TAG,"Error Accessing $url")
@@ -149,9 +114,11 @@ class CachedWebViewClient(val webView: WebView): WebViewClient() {
                 headerOutputStream?.close()
 
             }
-
-        }
-       // return null
+        //required for parallel
+       // }
+        //return null
+        //changes for synchronous
+        return z
     }
 
     /*class WebInterface(val c: Context) {
