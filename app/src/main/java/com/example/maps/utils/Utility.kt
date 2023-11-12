@@ -6,8 +6,7 @@ import android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET
 import com.example.maps.model.CachedWebResourceResponse
 import java.io.File
 import java.io.FileInputStream
-import java.io.InputStreamReader
-import java.io.ObjectInputStream
+
 
 object Utility {
 
@@ -30,8 +29,8 @@ object Utility {
                 x.printStackTrace()
             }
             finally {
-                if (headers?.containsKey("Content-Type")!=true) {
-                    headers?.set("Content-Key","image/png")
+                if (!headers.containsKey("Content-Type")) {
+                    headers["Content-Type"] = "image/png"
                 }
             }
             CachedWebResourceResponse(fis, headers = headers)
